@@ -1,35 +1,40 @@
 package db
 
 import (
-	"database/sql"
+	"context"
 	"fmt"
 	"myApi/model"
 	"time"
 
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 	_ "github.com/lib/pq"
 	"gopkg.in/ini.v1"
 )
 
-type DatabaseRepository interface {
-	ExecQuery(query string, args ...any) ([]map[string]any, error)
-}
-type DatabaseRepo struct {
-	db *sql.DB
+type DbPg struct {
+	*pgxpool.Pool
 }
 
-func Connect(dsn string) (*sql.DB, error) {
-	db, err := sql.Open("postgres", dsn)
+func NewConnection(ctx context.Context, dsn string) (*DbPg, error) {
+	config, err := pgxpool.ParseConfig(dsn)
 	if err != nil {
-		return nil, fmt.Errorf("failed to open DB: %w", err)
+		return nil, fmt.Errorf("parse config: %w", err)
 	}
-	if err = db.Ping(); err != nil {
-		return nil, fmt.Errorf("failed to ping DB: %w", err)
+	config.MaxConns = 10               // максимум соединений
+	config.MinConns = 2                // минимум соединений
+	config.MaxConnLifetime = time.Hour // время жизни соединения
+	config.MaxConnIdleTime = time.Minute * 30
+	config.HealthCheckPeriod = time.Minute
+	dbpool, err := pgxpool.NewWithConfig(ctx, config)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create pool: %w", err)
 	}
-	db.SetMaxOpenConns(20)                 // Исходя из max_connections БД
-	db.SetMaxIdleConns(5)                  // Не слишком много idle
-	db.SetConnMaxLifetime(2 * time.Minute) // Обновляем соединения
-	db.SetConnMaxIdleTime(15 * time.Second)
-	return db, err
+	if err := dbpool.Ping(ctx); err != nil {
+		dbpool.Close()
+		return nil, fmt.Errorf("ping database: %w", err)
+	}
+	return &DbPg{dbpool}, err
 }
 
 func Confini() (dsn string, err error) {
@@ -67,42 +72,14 @@ func ParseConf(dc *model.DatabaseConfig) (dsn string) {
 	)
 	return dsn
 }
-func (r *DatabaseRepo) ExecQuery(query string, args ...any) ([]map[string]any, error) {
-	rows, err := r.db.Query(query, args...)
+func (r *DbPg) ExecQuery(query string, args ...any) ([]map[string]any, error) {
+	rows, err := r.Query(context.Background(), query, args...)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-
-	columns, err := rows.Columns()
-	if err != nil {
-		return nil, err
-	}
-
-	var results []map[string]any
-
-	for rows.Next() {
-		values := make([]any, len(columns))
-		valuePtrs := make([]any, len(columns))
-
-		for i := range columns {
-			valuePtrs[i] = &values[i]
-		}
-
-		if err := rows.Scan(valuePtrs...); err != nil {
-			return nil, err
-		}
-
-		rowMap := make(map[string]any)
-		for i, col := range columns {
-			rowMap[col] = values[i]
-		}
-
-		results = append(results, rowMap)
-	}
-
-	return results, nil
+	return pgx.CollectRows(rows, pgx.RowToMap)
 }
-func NewDatabaseRepository(db *sql.DB) DatabaseRepository {
-	return &DatabaseRepo{db: db}
+func (db *DbPg) Close() {
+	db.Close()
 }

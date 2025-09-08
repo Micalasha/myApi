@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"log"
 	"myApi/db"
 
@@ -13,18 +14,18 @@ func main() {
 	if err != nil {
 		log.Printf("Error parse dsn: %v", err)
 	}
-	conn, err := db.Connect(dsn)
+	pool, err := db.NewConnection(context.Background(), dsn)
 	if err != nil {
 		log.Printf("Error connect to db: %v", err)
 	}
-	defer conn.Close()
-	dbrep := db.NewDatabaseRepository(conn)
-	_, err = dbrep.ExecQuery("select * from mm.people limit 10")
+	defer pool.Close()
 	if err != nil {
 		log.Printf("Error execute query: %v", err)
 	}
+	pool.ExecQuery("select * from people limit 1")
 	router := gin.Default()
 	SetupRoutes(router)
+
 	router.Run(":8080")
 
 }

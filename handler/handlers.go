@@ -3,30 +3,31 @@ package handler
 import (
 	"context"
 	"myApi/db"
+	"myApi/db/entity"
 	"myApi/model"
 	"net/http"
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/jackc/pgx/v5"
 )
 
 type TaskRepository struct {
 	db *db.DbPg
 }
 
-func (t *TaskRepository) GetAllTasks() ([]model.Task, error) {
+func (t *TaskRepository) GetAllTasks() ([]entity.TaskEntity, error) {
 	query := "SELECT * FROM tasks"
 	rows, err := t.db.Query(context.Background(), query)
 	defer rows.Close()
 	if err != nil {
 		return nil, err
 	}
-	var tasks []model.Task
-	for rows.Next() {
-		task := model.Task{}
-
+	tasks, err := pgx.CollectRows(rows, pgx.RowToStructByName[entity.TaskEntity])
+	if err != nil {
+		return nil, err
 	}
-
+	return tasks, nil
 }
 
 func ListHandler(c *gin.Context) {

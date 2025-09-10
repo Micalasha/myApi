@@ -8,7 +8,6 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
-	_ "github.com/lib/pq"
 	"gopkg.in/ini.v1"
 )
 
@@ -54,9 +53,9 @@ func LoadConfig(path string) (*config.DatabaseConfig, error) {
 	pg := &config.DatabaseConfig{
 		Server:   sec.Key("server").MustString("localhost"),
 		Port:     sec.Key("port").MustInt(5432),
-		Database: sec.Key("database").MustString(""),
-		Username: sec.Key("user").MustString(""),
-		Password: sec.Key("password").MustString(""),
+		Database: sec.Key("database").MustString("mydatabase"),
+		Username: sec.Key("user").MustString("myuser"),
+		Password: sec.Key("password").MustString("1104"),
 	}
 
 	return pg, nil

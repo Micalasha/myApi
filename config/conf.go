@@ -1,4 +1,4 @@
-package model
+package config
 
 type DatabaseConfig struct {
 	Server   string

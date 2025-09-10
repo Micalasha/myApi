@@ -3,7 +3,7 @@ package db
 import (
 	"context"
 	"fmt"
-	"myApi/model"
+	"myApi/config"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -44,14 +44,14 @@ func Confini() (dsn string, err error) {
 	}
 	return ParseConf(pgCfg), nil
 }
-func LoadConfig(path string) (*model.DatabaseConfig, error) {
+func LoadConfig(path string) (*config.DatabaseConfig, error) {
 	cfgFile, err := ini.Load(path)
 	if err != nil {
 		return nil, err
 	}
 	sec := cfgFile.Section("Postgresql")
 
-	pg := &model.DatabaseConfig{
+	pg := &config.DatabaseConfig{
 		Server:   sec.Key("server").MustString("localhost"),
 		Port:     sec.Key("port").MustInt(5432),
 		Database: sec.Key("database").MustString(""),
@@ -61,7 +61,7 @@ func LoadConfig(path string) (*model.DatabaseConfig, error) {
 
 	return pg, nil
 }
-func ParseConf(dc *model.DatabaseConfig) (dsn string) {
+func ParseConf(dc *config.DatabaseConfig) (dsn string) {
 	dsn = fmt.Sprintf(
 		"user=%s password=%s host=%s port=%d dbname=%s sslmode=disable",
 		dc.Username,

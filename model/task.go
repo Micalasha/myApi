@@ -1,11 +1,24 @@
-package main
+package model
+
+import "time"
 
 type Task struct {
-	ID          int64
+	ID          int
 	Title       string
 	Description string
-	Status      string
+	Status      TaskStatus
+	Priority    int
+	CreatedAt   time.Time
+	UpdatedAt   time.Time
 }
+
+const (
+	StatusPending    TaskStatus = "pending"
+	StatusInProgress TaskStatus = "in_progress"
+	StatusCompleted  TaskStatus = "completed"
+)
+
+type TaskStatus string
 
 var Ltask = []Task{
 	{

@@ -33,7 +33,7 @@ func NewConnection(ctx context.Context, dsn string) (*DbPg, error) {
 		dbpool.Close()
 		return nil, fmt.Errorf("ping database: %w", err)
 	}
-	return &DbPg{dbpool}, err
+	return &DbPg{dbpool}, nil
 }
 
 func Confini() (dsn string, err error) {
@@ -80,5 +80,5 @@ func (r *DbPg) ExecQuery(query string, args ...any) ([]map[string]any, error) {
 	return pgx.CollectRows(rows, pgx.RowToMap)
 }
 func (db *DbPg) Close() {
-	db.Close()
+	db.Pool.Close()
 }

@@ -5,6 +5,7 @@ import (
 	"log"
 	"myApi/db"
 	"myApi/handler"
+	"myApi/repository/postgresql"
 
 	"github.com/gin-gonic/gin"
 )
@@ -15,16 +16,19 @@ func main() {
 	if err != nil {
 		log.Printf("Error parse dsn: %v", err)
 	}
+
 	pool, err := db.NewConnection(context.Background(), dsn)
 	if err != nil {
 		log.Printf("Error connect to postgres: %v", err)
 	}
 	defer pool.Close()
-	if err != nil {
-		log.Printf("Error execute query: %v", err)
-	}
+
+	taskRepo := postgresql.NewTaskRepository(pool)
+
+	h := handler.NewHandler(taskRepo)
+
 	router := gin.Default()
-	handler.SetupRoutes(router)
+	h.SetupRoutes(router)
 
 	router.Run(":8080")
 

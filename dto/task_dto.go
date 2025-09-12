@@ -26,3 +26,18 @@ func ToTaskResponse(task *model.Task) TaskResponse {
 		UpdatedAt:   task.UpdatedAt,
 	}
 }
+
+type CreateTaskRequest struct {
+	Title       string `json:"title" binding:"required,min=2,max=200"`
+	Description string `json:"description,omitempty"`
+	Priority    int    `json:"priority,omitempty"`
+}
+
+func ToTaskModel(req CreateTaskRequest) *model.Task {
+	return &model.Task{
+		Title:       req.Title,
+		Description: req.Description,
+		Priority:    req.Priority,
+		Status:      model.StatusPending,
+	}
+}

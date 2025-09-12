@@ -1,75 +1,97 @@
 package handler
 
 import (
-	"context"
-	"myApi/db"
-	"myApi/db/entity"
 	"myApi/model"
+	"myApi/repository/postgresql"
 	"net/http"
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/jackc/pgx/v5"
 )
 
-type TaskRepository struct {
-	db *db.DbPg
+type Handler struct {
+	taskRepo *postgresql.TaskRepository // Храним репозиторий
 }
 
-func (t *TaskRepository) GetAllTasks() ([]entity.TaskEntity, error) {
-	query := "SELECT * FROM tasks"
-	rows, err := t.db.Query(context.Background(), query)
-	defer rows.Close()
-	if err != nil {
-		return nil, err
+func NewHandler(taskRepo *postgresql.TaskRepository) *Handler {
+	return &Handler{
+		taskRepo: taskRepo,
 	}
-	tasks, err := pgx.CollectRows(rows, pgx.RowToStructByName[entity.TaskEntity])
-	if err != nil {
-		return nil, err
-	}
-	return tasks, nil
 }
 
-func ListHandler(c *gin.Context) {
+func (h *Handler) ListHandler(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"list": model.Ltask})
 }
-func ListNoteHandler(c *gin.Context) {
+func (h *Handler) ListNoteHandler(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"list": nil})
 }
-func CreateHandler(c *gin.Context) {
-	var nwetask model.Task
-	if err := c.ShouldBindJSON(&nwetask); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-	}
 
-	c.JSON(http.StatusOK, gin.H{"Task": model.NewTask})
-	if model.NewTask.Status == "" {
-		model.NewTask.Status = "pending"
-	}
+/*
+	func (h *Handler) CreateTaskHandler(c *gin.Context) {
+		var newtask dto.CreateTaskRequest
+		if err := c.ShouldBindJSON(&newtask); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return // Забыл return!
+		}
 
-	// 4. Добавляем в список
-	model.Ltask = append(model.Ltask, model.NewTask)
-	c.JSON(http.StatusCreated, nwetask)
-}
-func HealthHandler(c *gin.Context) {
+		taskModel := dto.ToTaskModel(newtask)
+
+		if taskModel.Priority == 0 {
+			taskModel.Priority = 3
+		}
+
+		// Теперь правильно используем репозиторий через h.taskRepo
+		createdTask, err := h.taskRepo.CreateTask(c.Request.Context(), *taskModel)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create task"})
+			return
+		}
+
+		c.JSON(http.StatusCreated, dto.ToTaskResponse(createdTask))
+	}
+*/
+func (h *Handler) HealthHandler(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"status": "ok",
 		"time":   time.Now(),
 	})
 }
-func SetupRoutes(router *gin.Engine) {
+func (h *Handler) SetupRoutes(router *gin.Engine) {
 	api := router.Group("/api")
 	{
-		api.GET("/health", HealthHandler)
 
+		api.Use(authMiddlewareGroup("123214"))
+		api.GET("/health", h.HealthHandler)
 		tasks := api.Group("/task")
 		{
-			tasks.GET("/list", ListHandler)
-			tasks.POST("/create", CreateHandler)
+			tasks.GET("/list", h.ListHandler)
+			/*tasks.POST("/create", h.CreateTaskHandler)*/
 		}
 		notes := api.Group("/notes")
 		{
-			notes.GET("/list", ListNoteHandler)
+			notes.GET("/list", h.ListNoteHandler)
+		}
+	}
+}
+
+func authMiddlewareGroup(token string) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		if c.GetHeader("Token") != token {
+			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "Forbidden"})
+			return
+		}
+		c.Next()
+	}
+}
+
+func authMiddleware(token string) func(http.HandlerFunc) http.HandlerFunc {
+	return func(next http.HandlerFunc) http.HandlerFunc {
+		return func(w http.ResponseWriter, r *http.Request) {
+			if r.Header.Get("Token") != token {
+				http.Error(w, "Forbidden", 403)
+				return
+			}
+			next(w, r)
 		}
 	}
 }

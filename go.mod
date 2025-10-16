@@ -5,6 +5,7 @@ go 1.25
 require (
 	github.com/gin-gonic/gin v1.10.1
 	github.com/jackc/pgx/v5 v5.7.6
+	github.com/sirupsen/logrus v1.9.3
 	gopkg.in/ini.v1 v1.67.0
 )
 

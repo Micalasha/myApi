@@ -8,9 +8,12 @@ import (
 	"myApi/repository/postgresql"
 
 	"github.com/gin-gonic/gin"
+	"github.com/sirupsen/logrus"
 )
 
 func main() {
+	logrus.SetFormatter(&logrus.JSONFormatter{}) // JSON формат
+	logrus.SetLevel(logrus.InfoLevel)
 
 	dsn, err := db.Confini()
 	if err != nil {

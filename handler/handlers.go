@@ -1,12 +1,13 @@
 package handler
 
 import (
-	"myApi/model"
+	"myApi/dto"
 	"myApi/repository/postgresql"
 	"net/http"
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/sirupsen/logrus"
 )
 
 type Handler struct {
@@ -19,37 +20,47 @@ func NewHandler(taskRepo *postgresql.TaskRepository) *Handler {
 	}
 }
 
-func (h *Handler) ListHandler(c *gin.Context) {
-	c.JSON(http.StatusOK, gin.H{"list": model.Ltask})
+func (h *Handler) TaskListHandler(c *gin.Context) {
+	tasks, err := h.taskRepo.GetAllTasks()
+	if err != nil {
+		logrus.WithFields(logrus.Fields{
+			"handler": "TaskListHandler",
+			"error":   err.Error(),
+		}).Error("Failed to get tasks")
+
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": "Не удалось получить список задач",
+		})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"list": tasks})
 }
 func (h *Handler) ListNoteHandler(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"list": nil})
 }
 
-/*
-	func (h *Handler) CreateTaskHandler(c *gin.Context) {
-		var newtask dto.CreateTaskRequest
-		if err := c.ShouldBindJSON(&newtask); err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-			return // Забыл return!
-		}
-
-		taskModel := dto.ToTaskModel(newtask)
-
-		if taskModel.Priority == 0 {
-			taskModel.Priority = 3
-		}
-
-		// Теперь правильно используем репозиторий через h.taskRepo
-		createdTask, err := h.taskRepo.CreateTask(c.Request.Context(), *taskModel)
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create task"})
-			return
-		}
-
-		c.JSON(http.StatusCreated, dto.ToTaskResponse(createdTask))
+func (h *Handler) CreateTaskHandler(c *gin.Context) {
+	var newtask dto.CreateTaskRequest
+	if err := c.ShouldBindJSON(&newtask); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return // Забыл return!
 	}
-*/
+
+	taskModel := dto.ToTaskModel(newtask)
+
+	if taskModel.Priority == 0 {
+		taskModel.Priority = 3
+	}
+
+	createdTask, err := h.taskRepo.CreateTask(c.Request.Context(), *taskModel)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create task"})
+		return
+	}
+
+	c.JSON(http.StatusCreated, dto.ToTaskResponse(createdTask.ToModel()))
+}
+
 func (h *Handler) HealthHandler(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"status": "ok",
@@ -64,8 +75,8 @@ func (h *Handler) SetupRoutes(router *gin.Engine) {
 		api.GET("/health", h.HealthHandler)
 		tasks := api.Group("/task")
 		{
-			tasks.GET("/list", h.ListHandler)
-			/*tasks.POST("/create", h.CreateTaskHandler)*/
+			tasks.GET("/list", h.TaskListHandler)
+			tasks.POST("/create", h.CreateTaskHandler)
 		}
 		notes := api.Group("/notes")
 		{

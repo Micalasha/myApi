@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"log/slog"
 	"myApi/dto"
 	"myApi/repository/postgresql"
 	"net/http"
@@ -42,8 +43,11 @@ func (h *Handler) ListNoteHandler(c *gin.Context) {
 func (h *Handler) CreateTaskHandler(c *gin.Context) {
 	var newtask dto.CreateTaskRequest
 	if err := c.ShouldBindJSON(&newtask); err != nil {
+		slog.Warn("invalid request body",
+			"error", err,
+		)
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return // Забыл return!
+		return
 	}
 
 	taskModel := dto.ToTaskModel(newtask)
@@ -54,10 +58,17 @@ func (h *Handler) CreateTaskHandler(c *gin.Context) {
 
 	createdTask, err := h.taskRepo.CreateTask(c.Request.Context(), *taskModel)
 	if err != nil {
+		slog.Error("failed to create task",
+			"error", err,
+			"task_title", taskModel.Title,
+		)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create task"})
 		return
 	}
-
+	slog.Info("task created successfully",
+		"task_id", createdTask.ID,
+		"title", createdTask.Title,
+	)
 	c.JSON(http.StatusCreated, dto.ToTaskResponse(createdTask.ToModel()))
 }
 
@@ -70,7 +81,6 @@ func (h *Handler) HealthHandler(c *gin.Context) {
 func (h *Handler) SetupRoutes(router *gin.Engine) {
 	api := router.Group("/api")
 	{
-
 		api.Use(authMiddlewareGroup("123214"))
 		api.GET("/health", h.HealthHandler)
 		tasks := api.Group("/task")
@@ -87,7 +97,7 @@ func (h *Handler) SetupRoutes(router *gin.Engine) {
 
 func authMiddlewareGroup(token string) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		if c.GetHeader("Token") != token {
+		if c.GetHeader("Authorization") != token {
 			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "Forbidden"})
 			return
 		}

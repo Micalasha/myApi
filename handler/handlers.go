@@ -21,6 +21,17 @@ func NewHandler(taskRepo *postgresql.TaskRepository) *Handler {
 	}
 }
 
+// TaskListHandler godoc
+// @Summary      Get all tasks
+// @Description  Get list of all tasks
+// @Tags         tasks
+// @Accept       json
+// @Produce      json
+// @Security     BearerAuth
+// @Success      200  {array}   dto.TaskResponse
+// @Failure      401  {object}  map[string]string  "Unauthorized"
+// @Failure      500  {object}  map[string]string  "Internal Server Error"
+// @Router       /task/list [get]
 func (h *Handler) TaskListHandler(c *gin.Context) {
 	tasks, err := h.taskRepo.GetAllTasks()
 	if err != nil {
@@ -36,10 +47,35 @@ func (h *Handler) TaskListHandler(c *gin.Context) {
 	}
 	c.JSON(http.StatusOK, gin.H{"list": tasks})
 }
+
+// ListNoteHandler godoc
+// @Summary      Get all notes
+// @Description  Get list of all notes
+// @Tags         notes
+// @Accept       json
+// @Produce      json
+// @Security     BearerAuth
+// @Success      200  {array}   dto.NoteResponse
+// @Failure      401  {object}  map[string]string  "Unauthorized"
+// @Failure      500  {object}  map[string]string  "Internal Server Error"
+// @Router       /notes/list [get]
 func (h *Handler) ListNoteHandler(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"list": nil})
 }
 
+// CreateTaskHandler godoc
+// @Summary      Create a new task
+// @Description  Create a new task with the input payload
+// @Tags         tasks
+// @Accept       json
+// @Produce      json
+// @Security     BearerAuth
+// @Param        task  body      dto.CreateTaskRequest  true  "Task data"
+// @Success      201   {object}  dto.TaskResponse
+// @Failure      400   {object}  map[string]string  "Bad Request"
+// @Failure      401   {object}  map[string]string  "Unauthorized"
+// @Failure      500   {object}  map[string]string  "Internal Server Error"
+// @Router       /task/create [post]
 func (h *Handler) CreateTaskHandler(c *gin.Context) {
 	var newtask dto.CreateTaskRequest
 	if err := c.ShouldBindJSON(&newtask); err != nil {
@@ -83,11 +119,13 @@ func (h *Handler) SetupRoutes(router *gin.Engine) {
 	{
 		api.Use(authMiddlewareGroup("123214"))
 		api.GET("/health", h.HealthHandler)
+
 		tasks := api.Group("/task")
 		{
 			tasks.GET("/list", h.TaskListHandler)
 			tasks.POST("/create", h.CreateTaskHandler)
 		}
+
 		notes := api.Group("/notes")
 		{
 			notes.GET("/list", h.ListNoteHandler)

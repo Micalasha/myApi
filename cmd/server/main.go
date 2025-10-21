@@ -10,9 +10,28 @@ import (
 	"myApi/repository/postgresql"
 	"os"
 
+	//_ "myApi/docs"
+
 	"github.com/gin-gonic/gin"
+	swaggerFiles "github.com/swaggo/files"
+	ginSwagger "github.com/swaggo/gin-swagger"
 	"gopkg.in/natefinch/lumberjack.v2"
 )
+
+// @title           Task API
+// @version         1.0
+// @description     API for managing tasks and notes
+
+// @contact.name   API Support
+// @contact.email  support@example.com
+
+// @host      localhost:8080
+// @BasePath  /api
+
+// @securityDefinitions.apikey BearerAuth
+// @in header
+// @name Authorization
+// @description Type "Bearer" followed by your token
 
 func main() {
 
@@ -47,6 +66,7 @@ func main() {
 
 	router := gin.Default()
 	h.SetupRoutes(router)
+	router.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
 
 	router.Run(":8080")
 

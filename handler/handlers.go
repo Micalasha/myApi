@@ -1,24 +1,51 @@
 package handler
 
 import (
+	"errors"
 	"log/slog"
+	"myApi/db"
 	"myApi/dto"
 	"myApi/repository/postgresql"
 	"net/http"
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/sirupsen/logrus"
 )
 
 type Handler struct {
-	taskRepo *postgresql.TaskRepository // Храним репозиторий
+	taskRepo *postgresql.TaskRepository
+	logger   *slog.Logger
 }
 
-func NewHandler(taskRepo *postgresql.TaskRepository) *Handler {
+func NewHandler(taskRepo *postgresql.TaskRepository, logger *slog.Logger) *Handler {
 	return &Handler{
 		taskRepo: taskRepo,
+		logger:   logger,
 	}
+}
+
+type HealthHandler struct {
+	dbPool *db.Pool
+}
+
+func NewHealthHandler(dbPool *db.Pool) *HealthHandler {
+	return &HealthHandler{dbPool: dbPool}
+}
+
+func (h *HealthHandler) HealthCheck(c *gin.Context) {
+	status := gin.H{
+		"status": "ok",
+		"database": gin.H{
+			"connected": h.dbPool.IsHealthy(),
+		},
+	}
+
+	if !h.dbPool.IsHealthy() {
+		c.JSON(http.StatusServiceUnavailable, status)
+		return
+	}
+
+	c.JSON(http.StatusOK, status)
 }
 
 // TaskListHandler godoc
@@ -27,40 +54,31 @@ func NewHandler(taskRepo *postgresql.TaskRepository) *Handler {
 // @Tags         tasks
 // @Accept       json
 // @Produce      json
-// @Security     BearerAuth
+// @Security     ApiKeyAuth
 // @Success      200  {array}   dto.TaskResponse
-// @Failure      401  {object}  map[string]string  "Unauthorized"
-// @Failure      500  {object}  map[string]string  "Internal Server Error"
+// @Failure      401  {object}  map[string]string
+// @Failure      500  {object}  map[string]string
 // @Router       /task/list [get]
 func (h *Handler) TaskListHandler(c *gin.Context) {
-	tasks, err := h.taskRepo.GetAllTasks()
-	if err != nil {
-		logrus.WithFields(logrus.Fields{
-			"handler": "TaskListHandler",
-			"error":   err.Error(),
-		}).Error("Failed to get tasks")
+	tasks, err := h.taskRepo.GetAllTasks(c.Request.Context())
 
+	if errors.Is(err, postgresql.ErrDatabaseUnavailable) {
+		h.logger.Warn("Database unavailable during task list request")
+		c.JSON(http.StatusServiceUnavailable, gin.H{
+			"error": "Database temporarily unavailable",
+		})
+		return
+	}
+
+	if err != nil {
+		h.logger.Error("Failed to get tasks", "error", err)
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"error": "Не удалось получить список задач",
 		})
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"list": tasks})
-}
 
-// ListNoteHandler godoc
-// @Summary      Get all notes
-// @Description  Get list of all notes
-// @Tags         notes
-// @Accept       json
-// @Produce      json
-// @Security     BearerAuth
-// @Success      200  {array}   dto.NoteResponse
-// @Failure      401  {object}  map[string]string  "Unauthorized"
-// @Failure      500  {object}  map[string]string  "Internal Server Error"
-// @Router       /notes/list [get]
-func (h *Handler) ListNoteHandler(c *gin.Context) {
-	c.JSON(http.StatusOK, gin.H{"list": nil})
+	c.JSON(http.StatusOK, gin.H{"list": tasks})
 }
 
 // CreateTaskHandler godoc
@@ -69,43 +87,59 @@ func (h *Handler) ListNoteHandler(c *gin.Context) {
 // @Tags         tasks
 // @Accept       json
 // @Produce      json
-// @Security     BearerAuth
+// @Security     Authorization
 // @Param        task  body      dto.CreateTaskRequest  true  "Task data"
 // @Success      201   {object}  dto.TaskResponse
-// @Failure      400   {object}  map[string]string  "Bad Request"
-// @Failure      401   {object}  map[string]string  "Unauthorized"
-// @Failure      500   {object}  map[string]string  "Internal Server Error"
+// @Failure      400   {object}  map[string]string
+// @Failure      401   {object}  map[string]string
+// @Failure      503   {object}  map[string]string
+// @Failure      500   {object}  map[string]string
 // @Router       /task/create [post]
 func (h *Handler) CreateTaskHandler(c *gin.Context) {
 	var newtask dto.CreateTaskRequest
 	if err := c.ShouldBindJSON(&newtask); err != nil {
-		slog.Warn("invalid request body",
-			"error", err,
-		)
+		h.logger.Warn("Invalid request body", "error", err)
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 
 	taskModel := dto.ToTaskModel(newtask)
-
 	if taskModel.Priority == 0 {
 		taskModel.Priority = 3
 	}
 
 	createdTask, err := h.taskRepo.CreateTask(c.Request.Context(), *taskModel)
+
+	if errors.Is(err, postgresql.ErrDatabaseUnavailable) {
+		h.logger.Warn("Database unavailable during task creation")
+		c.JSON(http.StatusServiceUnavailable, gin.H{
+			"error":   "Database temporarily unavailable",
+			"message": "Please retry your request in a few moments",
+		})
+		return
+	}
+
 	if err != nil {
-		slog.Error("failed to create task",
-			"error", err,
-			"task_title", taskModel.Title,
-		)
+		h.logger.Error("Failed to create task", "error", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create task"})
 		return
 	}
-	slog.Info("task created successfully",
-		"task_id", createdTask.ID,
-		"title", createdTask.Title,
-	)
+
 	c.JSON(http.StatusCreated, dto.ToTaskResponse(createdTask.ToModel()))
+}
+
+// ListNoteHandler godoc
+// @Summary      Get all notes
+// @Description  Get list of all notes
+// @Tags         notes
+// @Accept       json
+// @Produce      json
+// @Security     Authorization
+// @Failure      401  {object}  map[string]string
+// @Failure      500  {object}  map[string]string
+// @Router       /notes/list [get]
+func (h *Handler) ListNoteHandler(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{"list": nil})
 }
 
 func (h *Handler) HealthHandler(c *gin.Context) {
@@ -114,10 +148,11 @@ func (h *Handler) HealthHandler(c *gin.Context) {
 		"time":   time.Now(),
 	})
 }
+
 func (h *Handler) SetupRoutes(router *gin.Engine) {
 	api := router.Group("/api")
 	{
-		api.Use(authMiddlewareGroup("123214"))
+		api.Use(authMiddlewareGroup("123"))
 		api.GET("/health", h.HealthHandler)
 
 		tasks := api.Group("/task")
@@ -140,17 +175,5 @@ func authMiddlewareGroup(token string) gin.HandlerFunc {
 			return
 		}
 		c.Next()
-	}
-}
-
-func authMiddleware(token string) func(http.HandlerFunc) http.HandlerFunc {
-	return func(next http.HandlerFunc) http.HandlerFunc {
-		return func(w http.ResponseWriter, r *http.Request) {
-			if r.Header.Get("Token") != token {
-				http.Error(w, "Forbidden", 403)
-				return
-			}
-			next(w, r)
-		}
 	}
 }

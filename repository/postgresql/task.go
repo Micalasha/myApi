@@ -4,49 +4,112 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"myApi/db"
 	"myApi/db/entity"
 	"myApi/model"
-	"time"
-
-	"github.com/jackc/pgx/v5"
 )
 
+var ErrDatabaseUnavailable = errors.New("database connection not available")
+
 type TaskRepository struct {
-	db *db.DbPg // Использует подключение из db.go
+	dbPool *db.Pool
+	logger *slog.Logger
 }
 
-func NewTaskRepository(db *db.DbPg) *TaskRepository {
-	return &TaskRepository{db: db}
+func NewTaskRepository(dbPool *db.Pool, logger *slog.Logger) *TaskRepository {
+	return &TaskRepository{
+		dbPool: dbPool,
+		logger: logger,
+	}
 }
-func (t *TaskRepository) GetAllTasks() ([]entity.TaskEntity, error) {
-	query := "SELECT * FROM md.task"
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second*90)
-	defer cancel()
-	rows, err := t.db.Query(ctx, query)
+
+func (t *TaskRepository) GetAllTasks(ctx context.Context) ([]entity.TaskEntity, error) {
+	pool := t.dbPool.GetPool()
+	if pool == nil {
+		t.logger.Warn("Attempted to get tasks but database is unavailable")
+		return nil, ErrDatabaseUnavailable
+	}
+
+	query := `
+		SELECT id, title, description, status, priority, created_at, updated_at
+		FROM tasks
+		ORDER BY created_at DESC
+	`
+
+	rows, err := pool.Query(ctx, query)
 	if err != nil {
-		if errors.Is(err, context.DeadlineExceeded) {
-			return nil, fmt.Errorf("база данных не ответила за 90 секунд: %w", err)
-		}
-		return nil, fmt.Errorf("ошибка запроса: %w", err)
+		t.logger.Error("Failed to query tasks", "error", err)
+		return nil, fmt.Errorf("failed to get tasks: %w", err)
 	}
 	defer rows.Close()
-	tasks, err := pgx.CollectRows(rows, pgx.RowToStructByName[entity.TaskEntity])
-	if err != nil {
-		return nil, err
-	}
-	return tasks, nil
-}
-func (t *TaskRepository) CreateTask(ctx context.Context, task model.Task) (entity.TaskEntity, error) {
-	query := `
-        INSERT INTO md.task (title, description, status, priority)
-        VALUES ($1, $2, $3, $4)
-        returning id, title, description, status, priority, createdat, updatedat	`
-	var Tentity entity.TaskEntity
-	err := t.db.QueryRow(ctx, query, task.Title, task.Description, task.Status, task.Priority).Scan(&Tentity.ID, &Tentity.Title, &Tentity.Description, &Tentity.Status, &Tentity.Priority, &Tentity.CreatedAt, &Tentity.UpdatedAt)
-	if err != nil {
-		return entity.TaskEntity{}, err
+
+	var tasks []entity.TaskEntity
+	for rows.Next() {
+		var task entity.TaskEntity
+		err := rows.Scan(
+			&task.ID,
+			&task.Title,
+			&task.Description,
+			&task.Status,
+			&task.Priority,
+			&task.CreatedAt,
+			&task.UpdatedAt,
+		)
+		if err != nil {
+			t.logger.Error("Failed to scan task", "error", err)
+			return nil, fmt.Errorf("failed to scan task: %w", err)
+		}
+		tasks = append(tasks, task)
 	}
 
-	return Tentity, nil
+	t.logger.Info("Retrieved tasks", "count", len(tasks))
+	return tasks, rows.Err()
+}
+
+func (t *TaskRepository) CreateTask(ctx context.Context, task model.Task) (entity.TaskEntity, error) {
+	pool := t.dbPool.GetPool()
+	if pool == nil {
+		t.logger.Warn("Attempted to create task but database is unavailable",
+			"title", task.Title,
+		)
+		return entity.TaskEntity{}, ErrDatabaseUnavailable
+	}
+
+	query := `
+		INSERT INTO tasks (title, description, status, priority)
+		VALUES ($1, $2, $3, $4)
+		RETURNING id, title, description, status, priority, created_at, updated_at
+	`
+
+	var taskEntity entity.TaskEntity
+	err := pool.QueryRow(ctx, query,
+		task.Title,
+		task.Description,
+		task.Status,
+		task.Priority,
+	).Scan(
+		&taskEntity.ID,
+		&taskEntity.Title,
+		&taskEntity.Description,
+		&taskEntity.Status,
+		&taskEntity.Priority,
+		&taskEntity.CreatedAt,
+		&taskEntity.UpdatedAt,
+	)
+
+	if err != nil {
+		t.logger.Error("Failed to create task",
+			"error", err,
+			"title", task.Title,
+		)
+		return entity.TaskEntity{}, fmt.Errorf("failed to create task: %w", err)
+	}
+
+	t.logger.Info("Task created successfully",
+		"task_id", taskEntity.ID,
+		"title", taskEntity.Title,
+	)
+
+	return taskEntity, nil
 }

@@ -1,23 +1,33 @@
 package handler
 
 import (
+	"context"
 	"errors"
 	"log/slog"
 	"myApi/db"
+	"myApi/db/entity"
 	"myApi/dto"
+	"myApi/model"
 	"myApi/repository/postgresql"
 	"net/http"
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/jackc/pgx/v5"
 )
 
+type TaskRepo interface {
+	GetAllTasks(ctx context.Context) ([]entity.TaskEntity, error)
+	CreateTask(ctx context.Context, task model.Task) (entity.TaskEntity, error)
+	UpdateTask(ctx context.Context, task dto.UpdateTaskRequest) (entity.TaskEntity, error)
+	GetTaskById(ctx context.Context, id string) (entity.TaskEntity, error)
+}
 type Handler struct {
-	taskRepo *postgresql.TaskRepository
+	taskRepo TaskRepo
 	logger   *slog.Logger
 }
 
-func NewHandler(taskRepo *postgresql.TaskRepository, logger *slog.Logger) *Handler {
+func NewHandler(taskRepo TaskRepo, logger *slog.Logger) *Handler {
 	return &Handler{
 		taskRepo: taskRepo,
 		logger:   logger,
@@ -127,6 +137,27 @@ func (h *Handler) CreateTaskHandler(c *gin.Context) {
 
 	c.JSON(http.StatusCreated, dto.ToTaskResponse(createdTask.ToModel()))
 }
+
+func (h *Handler) GetTaskByIdHandler(c *gin.Context) {
+	id := c.Param("id")
+	task, err := h.taskRepo.GetTaskById(c.Request.Context(), id)
+	if errors.Is(err, postgresql.ErrDatabaseUnavailable) {
+
+		h.logger.Warn("Database unavailable during task get")
+	}
+
+}
+
+/*func (h *Handler) UpdateTaskHandler(c *gin.Context) {
+	var updateTask dto.UpdateTaskRequest
+	if err := c.ShouldBindJSON(&updateTask); err != nil {
+		h.logger.Warn("Invalid request body", "error", err)
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	err, update := h.taskRepo.UpdateTask(c.Request.Context(), updateTask)
+
+}*/
 
 // ListNoteHandler godoc
 // @Summary      Get all notes

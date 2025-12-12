@@ -32,6 +32,12 @@ type CreateTaskRequest struct {
 	Description string `json:"description,omitempty"`
 	Priority    int    `json:"priority,omitempty"`
 }
+type UpdateTaskRequest struct {
+	ID          int    `json:"id" binding:"required"`
+	Title       string `json:"title" binding:"required,max=200"`
+	Description string `json:"description,omitempty"`
+	Priority    int    `json:"priority,omitempty"`
+}
 
 func ToTaskModel(req CreateTaskRequest) *model.Task {
 	return &model.Task{

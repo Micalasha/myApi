@@ -141,10 +141,26 @@ func (h *Handler) CreateTaskHandler(c *gin.Context) {
 func (h *Handler) GetTaskByIdHandler(c *gin.Context) {
 	id := c.Param("id")
 	task, err := h.taskRepo.GetTaskById(c.Request.Context(), id)
-	if errors.Is(err, postgresql.ErrDatabaseUnavailable) {
+	if err != nil {
+		// 1. Проверяем на "Нет соединения"
+		if errors.Is(err, postgresql.ErrDatabaseUnavailable) {
+			h.logger.Error("Database unavailable", "error", err)
+			c.AbortWithStatus(http.StatusServiceUnavailable)
+			return
+		}
+		// 2. Проверяем на "Не найдено" (pgx.ErrNoRows можно обернуть в свой ErrNotFound)
+		if errors.Is(err, pgx.ErrNoRows) {
+			c.AbortWithStatus(http.StatusNotFound)
+			return
+		}
 
-		h.logger.Warn("Database unavailable during task get")
+		// 3. Остальные ошибки
+		h.logger.Error("Internal server error during get task", "id", id, "error", err)
+		c.AbortWithStatus(http.StatusInternalServerError)
+		return
 	}
+
+	c.JSON(http.StatusOK, task)
 
 }
 

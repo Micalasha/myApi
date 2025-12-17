@@ -119,9 +119,6 @@ func (t *TaskRepository) CreateTask(ctx context.Context, task model.Task) (entit
 func (t *TaskRepository) UpdateTask(ctx context.Context, task dto.UpdateTaskRequest) (entity.TaskEntity, error) {
 	pool := t.dbPool.GetPool()
 	if pool == nil {
-		t.logger.Warn("Attempted to create task but database is unavailable",
-			"title", task.Title,
-		)
 		return entity.TaskEntity{}, ErrDatabaseUnavailable
 	}
 	query := `
@@ -145,18 +142,13 @@ func (t *TaskRepository) UpdateTask(ctx context.Context, task dto.UpdateTaskRequ
 		&taskEntity.CreatedAt,
 		&taskEntity.UpdatedAt)
 	if err != nil {
-		t.logger.Error("Failed to update task")
 		return entity.TaskEntity{}, fmt.Errorf("failed to update task: %w", err)
 	}
-	t.logger.Info("Task updated successfully")
 	return taskEntity, nil
 }
 func (t *TaskRepository) GetTaskById(ctx context.Context, id string) (entity.TaskEntity, error) {
 	pool := t.dbPool.GetPool()
 	if pool == nil {
-		t.logger.Warn("Attempted to create task but database is unavailable",
-			"id", id,
-		)
 		return entity.TaskEntity{}, ErrDatabaseUnavailable
 	}
 	uq := "select * from md.tasks where id=$1;"
@@ -172,12 +164,9 @@ func (t *TaskRepository) GetTaskById(ctx context.Context, id string) (entity.Tas
 	)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			t.logger.Warn("Task not found", "id", id)
-			return entity.TaskEntity{}, err
+			return entity.TaskEntity{}, fmt.Errorf("task not found: %w", err)
 		}
-		t.logger.Error("Failed to get task", "error", err, "id", id)
 		return entity.TaskEntity{}, fmt.Errorf("failed to get task: %w", err)
 	}
-	t.logger.Info("Task found successfully")
 	return task, nil
 }

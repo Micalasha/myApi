@@ -164,16 +164,28 @@ func (h *Handler) GetTaskByIdHandler(c *gin.Context) {
 
 }
 
-/*func (h *Handler) UpdateTaskHandler(c *gin.Context) {
+func (h *Handler) UpdateTaskHandler(c *gin.Context) {
 	var updateTask dto.UpdateTaskRequest
 	if err := c.ShouldBindJSON(&updateTask); err != nil {
 		h.logger.Warn("Invalid request body", "error", err)
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	err, update := h.taskRepo.UpdateTask(c.Request.Context(), updateTask)
+	id := c.Param("id")
+	update, err := h.taskRepo.UpdateTask(c.Request.Context(), updateTask)
+	if err != nil {
+		if errors.Is(err, postgresql.ErrDatabaseUnavailable) {
+			h.logger.Error("Database unavailable", "error", err)
+			c.AbortWithStatus(http.StatusServiceUnavailable)
+			return
+		}
+		h.logger.Error("Internal server error during get task", "id", id, "error", err)
+		c.AbortWithStatus(http.StatusInternalServerError)
+		return
+	}
+	c.JSON(http.StatusOK, update.ToModel())
 
-}*/
+}
 
 // ListNoteHandler godoc
 // @Summary      Get all notes
